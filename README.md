@@ -4,12 +4,23 @@ Mostra na barra de tarefas do Windows a bateria dos seus periféricos: dispositi
 (pelo receptor ou pelo G HUB) e headsets, mouses, teclados e controles de outras marcas (Razer,
 SteelSeries, HyperX, Corsair, ASUS ROG, Sony, PlayStation, Xbox, Pulsar, VGN e outras) direto por HID.
 
-## Requisitos
+## Instalar pelo instalador (sem Python)
+
+1. Baixe o **`BateriaBT-Setup.exe`** da [última versão](https://github.com/EnricoSpanier/BateriaBT/releases/latest).
+2. Abra o arquivo e siga as telas. Marque **"Iniciar com o Windows"** se quiser que o app abra sozinho.
+
+O instalador não é assinado: se aparecer "O Windows protegeu o computador", clique em **Mais informações →
+Executar assim mesmo**. Com o Controle Inteligente de Aplicativos ligado, o Windows bloqueia o instalador;
+nesse caso use a instalação pelo Python abaixo.
+
+Para desinstalar: **Configurações → Aplicativos → Bateria BT → Desinstalar**.
+
+## Requisitos (instalação pelo Python)
 
 - Windows 10 ou 11.
 - Python 3.12 ou mais novo.
 
-## Instalação
+## Instalação pelo Python
 
 1. **Instale o Python.** Baixe em <https://www.python.org/downloads/windows/> e, na primeira tela do
    instalador, marque **"Add python.exe to PATH"**. Para conferir, abra o PowerShell e rode:
