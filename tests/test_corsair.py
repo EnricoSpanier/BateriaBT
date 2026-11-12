@@ -63,3 +63,46 @@ def test_xt_com_fio_comeca_no_alvo_08():
 def test_xt_sem_fone():
     h = FakeDev(on_write=lambda d: [[0x01, 0x00, 0x02, 0x05, 0, 0, 0, 0]])
     assert cs.read_xt(h, m(0x0A64)) is None
+
+
+def bragi(values, err=0):
+    """Aparelho Bragi falso: values = {(endpoint, prop): valor}."""
+    def on(d):
+        key = (d[1], d[3])
+        if key not in values:
+            return [[0x00, 0x02, 0x05, 0, 0]]  # propriedade não suportada
+        v = values[key]
+        return [[0x00, 0x02, err, v & 0xFF, v >> 8]]
+    return FakeDev(on_write=on)
+
+
+def test_bragi_cabo():
+    h = bragi({(0x08, 0x0F): 735, (0x08, 0x10): 1})
+    assert cs.read_bragi(h, m(0x1BF2)) == (73, True)
+    assert h.writes[0][:4] == b"\x00\x08\x02\x0f" and len(h.writes[0]) == 65
+
+
+def test_bragi_erro_ou_zero_da_none():
+    assert cs.read_bragi(bragi({(0x08, 0x0F): 500}, err=3), m(0x1BF2)) is None
+    assert cs.read_bragi(bragi({(0x08, 0x0F): 0}), m(0x1BF2)) is None
+
+
+def test_slipstream_le_o_pareado_e_informa_o_nome():
+    h = bragi({(0x08, 0x36): 0b100, (0x0A, 0x0F): 420, (0x0A, 0x10): 2, (0x0A, 0x12): 0x1BAB})
+    assert cs.read_slipstream(h, m(0x1BDC)) == (42, False, "Corsair K100 AIR Wireless", "KEYBOARD")
+
+
+def test_slipstream_sem_pareado_da_none():
+    assert cs.read_slipstream(bragi({(0x08, 0x36): 0}), m(0x1BDC)) is None
+
+
+def test_slipstream_nunca_pede_bateria_ao_receptor():
+    h = bragi({(0x08, 0x36): 0b10, (0x09, 0x0F): 900})
+    cs.read_slipstream(h, m(0x1B65))
+    assert not any(w[1] == 0x08 and w[3] == 0x0F for w in h.writes)
+
+
+def test_nxp():
+    h = FakeDev(on_write=lambda d: [[0x00, 0x0E, 0x50, 0, 0, 3, 2]])
+    assert cs.read_nxp(h, m(0x1B4B)) == (75, True) and h.features[0][:3] == b"\x00\x0e\x50"
+    assert cs.read_nxp(FakeDev(on_write=lambda d: [[0x00, 0x0E, 0x51, 0, 0, 3, 2]]), m(0x1B4B)) is None

@@ -1,4 +1,5 @@
-"""Headsets Corsair sem fio (protocolos documentados pelo HeadsetControl)."""
+"""Corsair sem fio: headsets (HeadsetControl) e mouses/teclados (protocolos Bragi e NXP, documentados
+pelo OpenLinkHub e pelo ckb-next)."""
 from . import Model, flush, pad, xfer
 
 VID = 0x1B1C
@@ -68,4 +69,76 @@ MODELS = [
     Model(VID, 0x0A62, "Corsair Virtuoso XT", "HEADSET", read_xt, **XT),
     Model(VID, 0x0A3E, "Corsair Virtuoso SE", "HEADSET", read_xt, **XT),
     Model(VID, 0x0A3D, "Corsair Virtuoso SE", "HEADSET", read_xt, **XT),
+]
+
+
+# --- mouses e teclados, protocolo Bragi (OpenLinkHub, ckb-next) ---
+# Só faz GET de propriedade, sem pôr o aparelho no "modo software" que o iCUE usa.
+BRAGI = {  # PID do aparelho (cabo, e o que o receptor informa do pareado): (nome, tipo)
+    0x1B80: ("Corsair Dark Core RGB PRO", "MOUSE"), 0x1B7E: ("Corsair Dark Core RGB PRO SE", "MOUSE"),
+    0x1B5E: ("Corsair Harpoon RGB Wireless", "MOUSE"), 0x2B2E: ("Corsair Harpoon RGB Wireless", "MOUSE"),
+    0x1B4C: ("Corsair Ironclaw RGB Wireless", "MOUSE"), 0x2B32: ("Corsair Ironclaw RGB Wireless", "MOUSE"),
+    0x1BB5: ("Corsair M65 RGB Ultra Wireless", "MOUSE"), 0x1BD6: ("Corsair M65 RGB Ultra Wireless", "MOUSE"),
+    0x1BF1: ("Corsair M75 Wireless", "MOUSE"), 0x2B08: ("Corsair M75 Wireless", "MOUSE"),
+    0x1BF2: ("Corsair M75 AIR Wireless", "MOUSE"), 0x1BB8: ("Corsair Nightsabre Wireless", "MOUSE"),
+    0x1BDB: ("Corsair Scimitar RGB Elite Wireless", "MOUSE"), 0x2B22: ("Corsair Scimitar Elite Wireless SE", "MOUSE"),
+    0x1BB2: ("Corsair Darkstar RGB Wireless", "MOUSE"), 0x1B98: ("Corsair Sabre RGB Pro Wireless", "MOUSE"),
+    0x1BAB: ("Corsair K100 AIR Wireless", "KEYBOARD"), 0x1B6E: ("Corsair K57 RGB Wireless", "KEYBOARD"),
+    0x2B10: ("Corsair K65 PLUS Wireless", "KEYBOARD"), 0x2B11: ("Corsair K65 PLUS Wireless", "KEYBOARD"),
+    0x2B23: ("Corsair K65 PLUS Wireless", "KEYBOARD"), 0x1BB6: ("Corsair K70 PRO Mini Wireless", "KEYBOARD"),
+    0x2B02: ("Corsair K70 Core TKL Wireless", "KEYBOARD"),
+}
+SLIPSTREAM = [0x1BDC, 0x1B7F, 0x1BA6, 0x2B00, 0x1B65, 0x1B81, 0x2B07, 0x1B94, 0x1B62, 0x1B66]  # receptores
+
+
+def _bragi_get(h, ep, prop):
+    """GET de propriedade: 00 <endpoint> 02 <prop>. Resposta: [1] = 02 (eco), [2] = erro, [3..4] = valor LE."""
+    flush(h)
+    r = xfer(h, pad([0x00, ep, 0x02, prop], 65), 64, lambda r: len(r) > 4 and r[1] == 0x02)
+    return r[3] | r[4] << 8 if r and r[2] == 0x00 else None
+
+
+def _bragi_battery(h, ep):
+    v = _bragi_get(h, ep, 0x0F)  # décimos de %
+    if not v or v > 1000:
+        return None
+    return v // 10, _bragi_get(h, ep, 0x10) == 1  # 1 = carregando, 2 = descarregando, 3 = cheio
+
+
+def read_bragi(h, m):
+    return _bragi_battery(h, 0x08)
+
+
+def read_slipstream(h, m):
+    """O receptor (0x08) diz quais aparelhos estão pareados; cada um responde em 0x08 | n."""
+    bits = _bragi_get(h, 0x08, 0x36)
+    for n in range(1, 8):
+        if bits and bits & (1 << n):
+            r = _bragi_battery(h, 0x08 | n)
+            if r:
+                name, kind = BRAGI.get(_bragi_get(h, 0x08 | n, 0x12), ("Corsair sem fio", "MOUSE"))
+                return (*r, name, kind)
+    return None
+
+
+# --- protocolo NXP antigo (Dark Core, Dark Core SE, K63 Wireless): feature report 0E 50, nível 0-4 ---
+NXP = {0x1B35: ("Corsair Dark Core RGB", "MOUSE"), 0x1B64: ("Corsair Dark Core RGB", "MOUSE"),
+       0x1B4B: ("Corsair Dark Core RGB SE", "MOUSE"), 0x1B51: ("Corsair Dark Core RGB SE", "MOUSE"),
+       0x1B45: ("Corsair K63 Wireless", "KEYBOARD"), 0x1B50: ("Corsair K63 Wireless", "KEYBOARD"),
+       0x1B8C: ("Corsair K63 Wireless", "KEYBOARD"), 0x1B8F: ("Corsair K63 Wireless", "KEYBOARD")}
+
+
+def read_nxp(h, m):
+    h.send_feature_report(pad([0x00, 0x0E, 0x50], 65))
+    r = list(h.get_feature_report(0, 65))
+    if len(r) < 7 or r[1:3] != [0x0E, 0x50] or r[5] > 4:
+        return None
+    return r[5] * 25, r[6] == 2  # 2 = carregando (ckb-next)
+
+
+BRAGI_COLL = dict(usage_page=0xFF42, interface=1)
+MODELS += [
+    *[Model(VID, pid, name, kind, read_bragi, **BRAGI_COLL) for pid, (name, kind) in BRAGI.items()],
+    *[Model(VID, pid, "Receptor Corsair Slipstream", "MOUSE", read_slipstream, **BRAGI_COLL) for pid in SLIPSTREAM],
+    *[Model(VID, pid, name, kind, read_nxp, interface=1) for pid, (name, kind) in NXP.items()],
 ]
