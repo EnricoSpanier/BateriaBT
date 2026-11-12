@@ -178,9 +178,10 @@ def _xbox_scan():
 
 
 def _all_models():
-    from . import asus, audeze, corsair, glorious, hyperx, jbl, playstation, razer, sony, steelseries, turtlebeach
+    from . import asus, audeze, compx, corsair, glorious, hyperx, jbl, playstation, razer, sony, steelseries, turtlebeach
     return [*razer.MODELS, *steelseries.MODELS, *hyperx.MODELS, *corsair.MODELS, *playstation.MODELS,
-            *audeze.MODELS, *turtlebeach.MODELS, *sony.MODELS, *jbl.MODELS, *asus.MODELS, *glorious.MODELS]
+            *audeze.MODELS, *turtlebeach.MODELS, *sony.MODELS, *jbl.MODELS, *asus.MODELS, *glorious.MODELS,
+            *compx.MODELS]
 
 
 MODELS = []  # preenchido abaixo, depois de Model existir (as marcas importam Model daqui)
