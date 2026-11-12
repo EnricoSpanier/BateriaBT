@@ -82,6 +82,14 @@ O instalador e o .exe não são assinados: o Windows pode mostrar o aviso do Sma
 
 ## Atualizar
 
+No painel, em **Geral → Sistema**, clique em **Buscar atualização** e depois em **Atualizar para X**:
+
+- **App instalado:** baixa o instalador novo, confere o arquivo, instala por cima e reabre o app.
+- **Pelo Python (clone do git):** faz `git pull`, instala as dependências e reinicia o app. Se você tiver
+  alterações locais que conflitem, nada muda e o erro aparece no painel.
+
+À mão, pelo Python:
+
 ```powershell
 git pull
 python -m pip install -r requirements.txt
