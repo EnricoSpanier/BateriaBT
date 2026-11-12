@@ -47,18 +47,27 @@ SteelSeries, HyperX, Corsair, ASUS ROG, Sony, PlayStation, Xbox, Pulsar, VGN e o
    pasta Inicializar do seu usuário apontando para a pasta onde o app está; se mover a pasta, desligue e
    ligue a opção de novo.
 
-## Gerar o .exe (opcional)
+## Gerar o instalador (opcional)
 
-Para levar o app a um PC sem Python, gere uma pasta com o `BateriaBT.exe`:
+Para levar o app a um PC sem Python, gere o `BateriaBT-Setup.exe`:
 
 ```powershell
 python -m pip install pyinstaller
+winget install JRSoftware.InnoSetup
 powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
-O resultado fica em `dist\BateriaBT\`: copie a pasta inteira e abra o `BateriaBT.exe`. O .exe não é
-assinado: o Windows pode mostrar o aviso do SmartScreen ("Mais informações → Executar assim mesmo"), e
-com o Controle Inteligente de Aplicativos ligado ele é bloqueado.
+O resultado fica em `dist\`:
+
+- `BateriaBT-Setup.exe`: instala só para o seu usuário (sem pedir administrador) em
+  `%LOCALAPPDATA%\Programs\BateriaBT`, cria o atalho no Menu Iniciar, oferece "Iniciar com o Windows" e
+  aparece em "Adicionar ou remover programas". As configurações em `%APPDATA%\BateriaBT` ficam ao
+  desinstalar.
+- `BateriaBT\`: a pasta com o `BateriaBT.exe`, para usar sem instalar. Sem o Inno Setup, o `build.ps1`
+  gera só essa pasta.
+
+O instalador e o .exe não são assinados: o Windows pode mostrar o aviso do SmartScreen ("Mais informações
+→ Executar assim mesmo"), e com o Controle Inteligente de Aplicativos ligado eles são bloqueados.
 
 ## Atualizar
 
