@@ -1,7 +1,7 @@
 import pytest
 
 import vendors
-from vendors import Model, VendorReader, path_id, xfer
+from vendors import Model, VendorReader, device_keys, path_id, xfer
 from tests.fakes import FakeDev, FakeHid, info
 
 
@@ -161,9 +161,36 @@ def test_sem_hidapi_xbox_continua():
     assert list(VendorReader(models=[], scan_xbox=lambda: xb, hid_mod=NoHid()).read_all()) == ["xinput:0"]
 
 
-def test_models_do_pacote_nao_tem_logitech_nem_duplicata():
+def test_models_do_pacote_so_tem_logitech_de_logitech_py_e_sem_duplicata():
+    from vendors import logitech
     keys = [(m.vid, m.pid, m.usage_page, m.usage, m.interface) for m in vendors.MODELS]
-    assert len(keys) == len(set(keys)) and all(m.vid != 0x046D for m in vendors.MODELS)
+    assert len(keys) == len(set(keys))
+    assert [m for m in vendors.MODELS if m.vid == 0x046D] == logitech.MODELS
+
+
+def test_headset_logitech_so_e_aberto_sem_ghub():
+    from vendors import logitech
+    m = logitech.MODELS[0]
+    d = FakeDev()
+    r = reader([(info(0x046D, m.pid, 0xFF32, 0x74), d)], [m])
+    assert r.read_all() == {} and not d.opened  # default: G HUB pode estar presente
+    r.ghub_absent = True
+    r.read_all()
+    assert d.opened
+
+
+def test_logitech_forjado_fora_de_logitech_py_nunca_e_aberto():
+    d = FakeDev()
+    r = reader([(info(0x046D, 0x0B1C, 0xFF32, 0x74), d)], [model(vid=0x046D, pid=0x0B1C, usage_page=0xFF32, usage=0x74)])
+    r.ghub_absent = True
+    assert r.read_all() == {} and not d.opened
+
+
+def test_duas_bases_a50_sem_serie_dao_duas_chaves():
+    from vendors import logitech
+    ms = logitech.MODELS
+    keys = device_keys([(info(0x046D, 0x0B1C, path=b"a"), ms[0]), (info(0x046D, 0x0B0B, path=b"b"), ms[1])], ms)
+    assert len(set(keys)) == 2
 
 
 def test_usage_page_sem_usage_casa_qualquer_usage():

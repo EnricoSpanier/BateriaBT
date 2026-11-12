@@ -14,7 +14,7 @@ from typing import Callable, Optional
 
 from PySide6.QtCore import QObject, Signal
 
-LOGITECH = 0x046D  # tem leitor próprio (HID++ e G HUB): nunca abrimos aqui
+LOGITECH = 0x046D  # tem leitor próprio (HID++ e G HUB): só abrimos os headsets de logitech.py, e sem G HUB
 
 
 @dataclass(frozen=True)
@@ -112,6 +112,7 @@ class VendorReader(QObject):
         self._hid = hid_mod
         self.last = {}
         self._busy = False
+        self.ghub_absent = False  # o app marca quando o G HUB comprovadamente não está rodando
 
     def refresh(self):
         if self._busy:
@@ -135,8 +136,9 @@ class VendorReader(QObject):
         except Exception as e:  # sem hidapi: só os controles Xbox
             print("erro hidapi:", e, file=sys.stderr)
             hid, infos = None, []
-        matched = [(i, m) for i in infos if i["vendor_id"] != LOGITECH
-                   for m in [next((m for m in self.models if m.matches(i)), None)] if m]
+        from .logitech import MODELS as logi  # exceção ao 0x046D: só estes, e só sem G HUB (ele segura o fone)
+        matched = [(i, m) for i in infos for m in [next((m for m in self.models if m.matches(i)), None)]
+                   if m and (i["vendor_id"] != LOGITECH or (self.ghub_absent and m in logi))]
         for (info, m), key in zip(matched, device_keys(matched, self.models)):
             present.add(key)
             if key in valid:  # outra coleção do mesmo aparelho já respondeu neste ciclo
@@ -178,12 +180,12 @@ def _xbox_scan():
 
 
 def _all_models():
-    from . import (asus, attackshark, audeze, compx, corsair, darmoshark, glorious, hyperx, jbl, kc2,
+    from . import (asus, attackshark, audeze, compx, corsair, darmoshark, glorious, hyperx, jbl, kc2, logitech,
                    playstation, pulsar, razer, redragon, sony, steelseries, turtlebeach)
     return [*razer.MODELS, *steelseries.MODELS, *hyperx.MODELS, *corsair.MODELS, *playstation.MODELS,
             *audeze.MODELS, *turtlebeach.MODELS, *sony.MODELS, *jbl.MODELS, *asus.MODELS, *glorious.MODELS,
             *compx.MODELS, *kc2.MODELS, *pulsar.MODELS,
-            *darmoshark.MODELS, *redragon.MODELS, *attackshark.MODELS]
+            *darmoshark.MODELS, *redragon.MODELS, *attackshark.MODELS, *logitech.MODELS]
 
 
 MODELS = []  # preenchido abaixo, depois de Model existir (as marcas importam Model daqui)

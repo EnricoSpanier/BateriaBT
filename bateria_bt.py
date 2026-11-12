@@ -187,7 +187,8 @@ class GHubReader(QObject):
         self.ws.textMessageReceived.connect(self._on_msg)
         # queda rápida: mantém a leitura e reconecta no próximo ciclo; se reconectar falhar (G HUB fechado), limpa
         self._connecting = False
-        self.ws.connected.connect(lambda: setattr(self, "_connecting", False))
+        self.absent = False  # só vira True quando conectar falha: até lá o G HUB pode estar segurando os fones
+        self.ws.connected.connect(lambda: (setattr(self, "_connecting", False), setattr(self, "absent", False)))
         self.ws.errorOccurred.connect(self._on_error)
         self.devices = {}   # ghub id -> info
         self.data = {}
@@ -206,7 +207,7 @@ class GHubReader(QObject):
 
     def _on_error(self, _):
         if self._connecting:
-            self._connecting = False
+            self._connecting, self.absent = False, True
             self.devices, self.data = {}, {}
             self.done.emit({})
 
@@ -1811,6 +1812,7 @@ class App:
         self.bt.refresh()
         self.ghub.refresh()
         self.hidpp.refresh()
+        self.vendor.ghub_absent = self.ghub.absent  # headsets Logitech Centurion: só sem G HUB
         self.vendor.refresh()
 
     def migrate(self, aliases):
