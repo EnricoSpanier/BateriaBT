@@ -37,10 +37,54 @@ def test_release_nova_no_exe(monkeypatch):
     assert u.action == "Atualizar para 9.0.0" and "9.0.0" in u.text
 
 
-def test_release_nova_rodando_pelo_python(monkeypatch):
+REL = b'{"tag_name": "v9.0.0", "html_url": "h", "assets": []}'
+
+
+def test_release_nova_pelo_python_com_git(monkeypatch, tmp_path):
+    (tmp_path / ".git").mkdir()
+    monkeypatch.setattr(up, "ROOT", tmp_path)
     u = _updater(monkeypatch, False)
-    u._on_release(b'{"tag_name": "v9.0.0", "html_url": "h", "assets": []}')
-    assert u.action == "Abrir página" and "git pull" in u.text
+    u._on_release(REL)
+    assert u.action == "Atualizar para 9.0.0"
+
+
+def test_release_nova_pelo_python_sem_git(monkeypatch, tmp_path):
+    monkeypatch.setattr(up, "ROOT", tmp_path)
+    u = _updater(monkeypatch, False)
+    u._on_release(REL)
+    assert u.action == "Buscar atualização" and "git" in u.text
+
+
+def test_git_pull_falhou_nao_reinicia(monkeypatch):
+    u = _updater(monkeypatch, False)
+    calls, started = [], []
+
+    class R:
+        returncode, stdout, stderr = 1, "", "fatal: Not possible to fast-forward, aborting."
+    monkeypatch.setattr(up.subprocess, "run", lambda args, **k: calls.append(args) or R())
+    monkeypatch.setattr(up.subprocess, "Popen", lambda *a, **k: started.append(a))
+    u._git_update()
+    u._after_git("fatal: Not possible to fast-forward, aborting.")
+    assert calls == [["git", "pull", "--ff-only"]] and not started  # pip nem roda
+    assert "fast-forward" in u.text and u.action == "Buscar atualização"
+
+
+def test_git_ok_instala_dependencias_e_reinicia(monkeypatch):
+    quit_ = []
+    monkeypatch.setattr(up.sys, "frozen", False, raising=False)
+    u = up.Updater(quit_app=lambda: quit_.append(1))
+    calls, started, done = [], [], []
+
+    class R:
+        returncode, stdout, stderr = 0, "", ""
+    monkeypatch.setattr(up.subprocess, "run", lambda args, **k: calls.append(args) or R())
+    monkeypatch.setattr(up.subprocess, "Popen", lambda args, **k: started.append(args))
+    u._git_done.disconnect(u._after_git)
+    u._git_done.connect(done.append)
+    u._git_update()
+    assert done == [""] and calls[1][-3:] == ["install", "-q", "-r", "requirements.txt"][-3:]
+    u._after_git("")
+    assert started[0][-2:] == [str(up.ROOT / "bateria_bt.py"), "--restart"] and quit_
 
 
 def test_ja_na_mais_recente(monkeypatch):

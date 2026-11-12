@@ -1,20 +1,21 @@
-"""Busca a última Release no GitHub e, no app instalado (.exe), baixa e roda o instalador novo.
-
-Rodando pelo Python, só abre a página da Release (atualizar o código é com git pull)."""
+"""Busca a última Release no GitHub e atualiza: no app instalado (.exe) baixa e roda o instalador novo;
+rodando pelo Python num clone do git, faz git pull, instala as dependências e reinicia o app."""
 import hashlib
 import json
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QUrl, Signal
-from PySide6.QtGui import QDesktopServices
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 
 VERSION = "1.1.0"
 API = "https://api.github.com/repos/EnricoSpanier/BateriaBT/releases/latest"
 ASSET = "BateriaBT-Setup.exe"
+ROOT = Path(__file__).resolve().parent
+NO_WINDOW = subprocess.CREATE_NO_WINDOW  # pythonw não tem console: sem piscar janela preta
 
 
 def parse_version(tag):
@@ -43,6 +44,7 @@ class Updater(QObject):
     """Estado para a linha "Versão" do painel: `text` (situação) e `action` (rótulo do botão, ou "" = sem
     botão ativo). O clique chama `click()`, que faz a próxima etapa."""
     changed = Signal()
+    _git_done = Signal(str)  # erro ("" = ok), vindo da thread do git pull
 
     def __init__(self, quit_app):
         super().__init__()
@@ -50,6 +52,7 @@ class Updater(QObject):
         self.quit_app = quit_app
         self.text, self.action = "Busca a versão nova no GitHub.", "Buscar atualização"
         self.release = None
+        self._git_done.connect(self._after_git)
 
     def _set(self, text, action):
         self.text, self.action = text, action
@@ -79,9 +82,11 @@ class Updater(QObject):
             self._set("Buscando…", "")
             self._get(API, self._on_release)
         elif self.action.startswith("Atualizar"):
-            self._download()
-        elif self.action == "Abrir página":
-            QDesktopServices.openUrl(QUrl(self.release["html_url"]))
+            if getattr(sys, "frozen", False):
+                self._download()
+            else:
+                self._set("Baixando o código novo…", "")
+                threading.Thread(target=self._git_update, daemon=True).start()
 
     def _on_release(self, data):
         rel = json.loads(data)
@@ -91,10 +96,38 @@ class Updater(QObject):
             return
         self.release = rel
         new = tag.lstrip("vV")
-        if getattr(sys, "frozen", False) and pick_asset(rel):
+        if pick_asset(rel) if getattr(sys, "frozen", False) else (ROOT / ".git").exists():
             self._set(f"Versão {new} disponível.", f"Atualizar para {new}")
-        else:  # rodando pelo Python: atualizar é git pull
-            self._set(f"Versão {new} disponível. Atualize com git pull.", "Abrir página")
+        else:  # Python sem git (ZIP) ou Release sem instalador
+            self._set(f"Versão {new} disponível. Esta pasta não é um clone do git: veja o README.",
+                      "Buscar atualização")
+
+    @staticmethod
+    def _run_cmd(args):
+        r = subprocess.run(args, cwd=ROOT, capture_output=True, text=True, creationflags=NO_WINDOW)
+        if r.returncode:
+            raise RuntimeError(((r.stderr or r.stdout).strip().splitlines() or ["falhou"])[-1])
+
+    def _git_update(self):
+        """Roda numa thread: git pull (só avanço rápido) e dependências. Erro = nada reinicia."""
+        python = Path(sys.executable).with_name("python.exe")
+        try:
+            self._run_cmd(["git", "pull", "--ff-only"])
+            self._run_cmd([str(python), "-m", "pip", "install", "-q", "-r", "requirements.txt"])
+            self._git_done.emit("")
+        except Exception as e:
+            print("erro atualização git:", e, file=sys.stderr)
+            self._git_done.emit(str(e) or "falhou")
+
+    def _after_git(self, err):
+        if err:
+            self._set(f"Não deu para atualizar: {err}", "Buscar atualização")
+            return
+        self._set("Reiniciando…", "")
+        # o app novo espera o atual soltar o app.lock (ver main, --restart)
+        subprocess.Popen([str(Path(sys.executable).with_name("pythonw.exe")), str(ROOT / "bateria_bt.py"), "--restart"],
+                         cwd=ROOT, creationflags=subprocess.DETACHED_PROCESS)
+        self.quit_app()
 
     def _download(self):
         url, sha = pick_asset(self.release)

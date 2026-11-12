@@ -2035,7 +2035,7 @@ class NoWheel(QObject):
 def main():
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     lock = QLockFile(str(CONFIG_DIR / "app.lock"))
-    if not lock.tryLock(100):
+    if not lock.tryLock(10_000 if "--restart" in sys.argv else 100):  # --restart: o app antigo ainda fecha
         return  # já está rodando
     log = open(CONFIG_DIR / "erros.log", "a", encoding="utf-8", buffering=1)  # pythonw não tem console
     sys.stderr = log
