@@ -126,6 +126,7 @@ def set_startup(on):
     lnk = CreateObject("WScript.Shell", dynamic=True).CreateShortcut(str(STARTUP_LNK))
     if getattr(sys, "frozen", False):  # instalado pelo BateriaBT-Setup.exe (PyInstaller)
         lnk.TargetPath = sys.executable
+        lnk.Arguments = ""  # o atalho pode ter vindo da versão em Python, com o caminho do script
         lnk.WorkingDirectory = str(Path(sys.executable).parent)
     else:
         lnk.TargetPath = str(Path(sys.executable).with_name("pythonw.exe"))
