@@ -1,0 +1,115 @@
+"""Busca a última Release no GitHub e, no app instalado (.exe), baixa e roda o instalador novo.
+
+Rodando pelo Python, só abre a página da Release (atualizar o código é com git pull)."""
+import hashlib
+import json
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+from PySide6.QtCore import QObject, QUrl, Signal
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
+
+VERSION = "1.0.0"
+API = "https://api.github.com/repos/EnricoSpanier/BateriaBT/releases/latest"
+ASSET = "BateriaBT-Setup.exe"
+
+
+def parse_version(tag):
+    """'v1.2.10' -> (1, 2, 10); o que não for número vira 0."""
+    return tuple(int(p) if p.isdigit() else 0 for p in tag.strip().lstrip("vV").split("."))
+
+
+def is_newer(tag, current):
+    return parse_version(tag) > parse_version(current)
+
+
+def pick_asset(release):
+    """(url do instalador, sha256 informado pelo GitHub ou None), ou None se a Release não tem instalador."""
+    for a in release.get("assets", []):
+        if a.get("name") == ASSET:
+            digest = a.get("digest") or ""
+            return a["browser_download_url"], digest[7:] if digest.startswith("sha256:") else None
+    return None
+
+
+def sha_ok(data, expected):
+    return expected is None or hashlib.sha256(data).hexdigest() == expected.lower()
+
+
+class Updater(QObject):
+    """Estado para a linha "Versão" do painel: `text` (situação) e `action` (rótulo do botão, ou "" = sem
+    botão ativo). O clique chama `click()`, que faz a próxima etapa."""
+    changed = Signal()
+
+    def __init__(self, quit_app):
+        super().__init__()
+        self.net = QNetworkAccessManager(self)
+        self.quit_app = quit_app
+        self.text, self.action = "Busca a versão nova no GitHub.", "Buscar atualização"
+        self.release = None
+
+    def _set(self, text, action):
+        self.text, self.action = text, action
+        self.changed.emit()
+
+    def _get(self, url, done, progress=None):
+        req = QNetworkRequest(QUrl(url))
+        req.setRawHeader(b"User-Agent", f"BateriaBT/{VERSION}".encode())
+        reply = self.net.get(req)
+        if progress:
+            reply.downloadProgress.connect(progress)
+        reply.finished.connect(lambda: self._finished(reply, done))
+
+    def _finished(self, reply, done):
+        reply.deleteLater()
+        if reply.error() != QNetworkReply.NoError:
+            self._set("Sem conexão com o GitHub. Tente de novo mais tarde.", "Buscar atualização")
+            return
+        try:
+            done(bytes(reply.readAll()))
+        except Exception as e:  # resposta inesperada: não derruba o app
+            print("erro atualização:", e, file=sys.stderr)
+            self._set("Não foi possível ler a resposta do GitHub.", "Buscar atualização")
+
+    def click(self):
+        if self.action == "Buscar atualização":
+            self._set("Buscando…", "")
+            self._get(API, self._on_release)
+        elif self.action.startswith("Atualizar"):
+            self._download()
+        elif self.action == "Abrir página":
+            QDesktopServices.openUrl(QUrl(self.release["html_url"]))
+
+    def _on_release(self, data):
+        rel = json.loads(data)
+        tag = rel.get("tag_name", "")
+        if not is_newer(tag, VERSION):
+            self._set(f"Você está na versão mais recente ({VERSION}).", "Buscar atualização")
+            return
+        self.release = rel
+        new = tag.lstrip("vV")
+        if getattr(sys, "frozen", False) and pick_asset(rel):
+            self._set(f"Versão {new} disponível.", f"Atualizar para {new}")
+        else:  # rodando pelo Python: atualizar é git pull
+            self._set(f"Versão {new} disponível. Atualize com git pull.", "Abrir página")
+
+    def _download(self):
+        url, sha = pick_asset(self.release)
+        self._set("Baixando…", "")
+        self._get(url, lambda data: self._run(data, sha),
+                  lambda got, total: total > 0 and self._set(f"Baixando… {got * 100 // total} %", ""))
+
+    def _run(self, data, sha):
+        if not sha_ok(data, sha):
+            self._set("O arquivo baixado veio corrompido. Tente de novo.", "Buscar atualização")
+            return
+        setup = Path(tempfile.gettempdir()) / ASSET
+        setup.write_bytes(data)
+        # o instalador fecha o app (se ainda estiver aberto), instala por cima e abre de novo
+        subprocess.Popen([str(setup), "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
+                         creationflags=subprocess.DETACHED_PROCESS)
+        self._set("Instalando…", "")
+        self.quit_app()

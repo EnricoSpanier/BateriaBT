@@ -10,5 +10,6 @@ if ($LASTEXITCODE) { exit $LASTEXITCODE }
 $iscc = @("$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe", "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe") |
     Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $iscc) { Write-Warning "Inno Setup 6 não encontrado: só a pasta dist\BateriaBT foi gerada."; exit 0 }
-& $iscc /Qp installer.iss
+$version = (Select-String -Path updater.py -Pattern '^VERSION = "(.+)"').Matches[0].Groups[1].Value
+& $iscc /Qp "/DAppVersion=$version" installer.iss
 exit $LASTEXITCODE

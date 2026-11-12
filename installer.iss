@@ -1,5 +1,8 @@
 ; Instalador do Bateria BT (Inno Setup 6). Gerado por build.ps1 a partir de dist\BateriaBT.
-#define AppVersion "1.0.0"
+; o build.ps1 passa a VERSION do updater.py
+#ifndef AppVersion
+  #define AppVersion "0.0.0"
+#endif
 
 [Setup]
 AppId={{6C1E2B7A-5F3D-4B8E-9A21-BA7E21A0B7B7}
@@ -37,7 +40,8 @@ Name: "{userprograms}\Bateria BT"; Filename: "{app}\BateriaBT.exe"
 Name: "{userstartup}\BateriaBT"; Filename: "{app}\BateriaBT.exe"; WorkingDir: "{app}"; Tasks: startup
 
 [Run]
-Filename: "{app}\BateriaBT.exe"; Description: "Abrir o Bateria BT"; Flags: nowait postinstall skipifsilent
+; sem skipifsilent: no /SILENT da atualização pelo app, ele reabre sozinho
+Filename: "{app}\BateriaBT.exe"; Description: "Abrir o Bateria BT"; Flags: nowait postinstall
 
 [UninstallRun]
 ; o app aberto prende os arquivos: fecha antes de apagar

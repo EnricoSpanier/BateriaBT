@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QButtonGroup, QCol
                                QHBoxLayout, QLabel, QLineEdit, QMenu, QPushButton, QScrollArea, QSlider, QSpinBox,
                                QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget)
 import graphics as G  # desenho vetorial (ícones e pilhas) igual ao original
+from updater import VERSION, Updater  # botão "Buscar atualização" (Releases do GitHub)
 from vendors import VendorReader  # outras marcas (Razer, SteelSeries, HyperX, Corsair, PlayStation, Xbox)
 from winrt.windows.devices.enumeration import DeviceInformation, DeviceInformationKind
 from winrt.windows.foundation import IPropertyValue, PropertyType
@@ -1348,6 +1349,25 @@ class Panel(QWidget):
             h.addWidget(control, 0, Qt.AlignVCenter)
         return w
 
+    def _update_row(self):
+        """Versão + botão que busca e instala a atualização (ver updater.py)."""
+        up = self.app.updater
+        btn = QPushButton()
+        btn.setProperty("kind", "secondary")
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.clicked.connect(up.click)
+        row = self._row(f"Versão {VERSION}", up.text, btn)
+        sub = row.findChildren(QLabel)[-1]
+
+        def show():
+            sub.setText(up.text)
+            btn.setText(up.action or "Aguarde…")
+            btn.setEnabled(bool(up.action))
+        show()
+        up.changed.connect(show)
+        row.destroyed.connect(lambda: up.changed.disconnect(show))  # o painel recria as páginas
+        return row
+
     def _toggle(self, title, sub, checked, fn):
         return self._row(title, sub, Toggle(self, checked, fn))
 
@@ -1485,7 +1505,8 @@ class Panel(QWidget):
                          cfg["blink_alert_enabled"], lambda on: app.set("blink_alert_enabled", on))))
 
         v.addWidget(self._label("Sistema", "section"))
-        v.addWidget(self._group(self._toggle("Iniciar com o Windows", None, startup_enabled(), set_startup)))
+        v.addWidget(self._group(self._toggle("Iniciar com o Windows", None, startup_enabled(), set_startup),
+                                self._update_row()))
         v.addStretch()
         return w
 
@@ -1724,6 +1745,7 @@ class App:
         self.alerted, self.full_alerted, self.last_pct = set(), set(), {}
         self.dev_trays = {}
 
+        self.updater = Updater(qapp.quit)  # antes do painel, que mostra o estado dele
         self.widget = TaskbarWidget(self)
         self.panel = Panel(self)
         self.tray = QSystemTrayIcon()
