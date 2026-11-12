@@ -23,7 +23,7 @@ class Model:
     pid: int
     name: str
     kind: str                       # MOUSE / KEYBOARD / HEADSET / GAMEPAD
-    read: Callable                  # read(h, model) -> (pct, charging) | None
+    read: Callable                  # read(h, model) -> (pct, charging[, nome, tipo]) | None
     usage_page: Optional[int] = None
     usage: Optional[int] = None
     interface: Optional[int] = None
@@ -36,8 +36,8 @@ class Model:
     def matches(self, info):
         if (info["vendor_id"], info["product_id"]) != (self.vid, self.pid):
             return False
-        if self.usage_page is not None:
-            if (info["usage_page"], info["usage"]) != (self.usage_page, self.usage):
+        if self.usage_page is not None:  # usage None = qualquer usage da página
+            if info["usage_page"] != self.usage_page or self.usage not in (None, info["usage"]):
                 return False
         elif self.writes and info["usage_page"] < 0xFF00:
             return False  # só a interface foi declarada: escreve apenas na coleção do fabricante
@@ -94,7 +94,9 @@ def device_keys(matched, models):
         serial = (info.get("serial_number") or "").strip()
         tail = serial or str(order[(info["vendor_id"], info["product_id"])].index(path_id(info)))
         group = min(x.pid for x in models if x.vid == m.vid and x.name == m.name)
-        keys.append(f"vendor:{m.vid:04x}:{group:04x}:{tail}")
+        names = sorted({x.name for x in models if x.vid == m.vid and x.pid == group})
+        extra = f":{names.index(m.name)}" if len(names) > 1 else ""  # PID com aparelhos diferentes (receptor)
+        keys.append(f"vendor:{m.vid:04x}:{group:04x}:{tail}{extra}")
     return keys
 
 
@@ -141,7 +143,7 @@ class VendorReader(QObject):
                 continue
             r = self._read_one(hid, info, m)
             if r:
-                valid[key] = {"name": m.name, "battery": r[0], "connected": True, "kind": m.kind,
+                valid[key] = {"name": r[2], "battery": r[0], "connected": True, "kind": r[3],
                               "charging": r[1], "hours": None}
         try:
             valid.update(self.scan_xbox())
@@ -161,8 +163,8 @@ class VendorReader(QObject):
             return None
         try:
             r = m.read(h, m)
-            if r and 0 <= r[0] <= 100:
-                return int(r[0]), bool(r[1])
+            if r and 0 <= r[0] <= 100:  # o leitor de um receptor pode informar o aparelho pareado
+                return int(r[0]), bool(r[1]), (r[2] if len(r) > 2 else m.name), (r[3] if len(r) > 3 else m.kind)
         except Exception as e:
             print(f"erro {m.name}:", e, file=sys.stderr)
         finally:

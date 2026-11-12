@@ -164,3 +164,24 @@ def test_sem_hidapi_xbox_continua():
 def test_models_do_pacote_nao_tem_logitech_nem_duplicata():
     keys = [(m.vid, m.pid, m.usage_page, m.usage, m.interface) for m in vendors.MODELS]
     assert len(keys) == len(set(keys)) and all(m.vid != 0x046D for m in vendors.MODELS)
+
+
+def test_usage_page_sem_usage_casa_qualquer_usage():
+    d = FakeDev()
+    devs = [(info(0x1111, 0x2222, 0xFF42, 0x07, 1), d)]
+    out = reader(devs, [model(usage_page=0xFF42, usage=None, interface=1)]).read_all()
+    assert d.writes == [b"\x01"] and len(out) == 1
+
+
+def test_leitor_de_receptor_informa_nome_e_tipo_do_pareado():
+    m = model(read=lambda h, mm: (40, False, "Teclado X", "KEYBOARD"))
+    out = reader([(info(0x1111, 0x2222, 0xFF00, 1, serial="S"), FakeDev())], [m]).read_all()
+    assert out["vendor:1111:2222:S"]["name"] == "Teclado X" and out["vendor:1111:2222:S"]["kind"] == "KEYBOARD"
+
+
+def test_mesmo_pid_com_aparelhos_diferentes_nao_colidem():
+    a = model(name="Mouse (receptor)", usage_page=0xFF01)
+    b = model(name="Teclado (receptor)", usage_page=0xFF00)
+    devs = [(info(0x1111, 0x2222, 0xFF01, 1, 2, path=b"c3", serial="S"), FakeDev()),
+            (info(0x1111, 0x2222, 0xFF00, 1, 2, path=b"c2", serial="S"), FakeDev())]
+    assert sorted(reader(devs, [a, b]).read_all()) == ["vendor:1111:2222:S:0", "vendor:1111:2222:S:1"]
