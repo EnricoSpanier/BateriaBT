@@ -37,7 +37,7 @@ class FakeDev:
         return self.q.pop(0) if self.q else []
 
     def get_input_report(self, report_id, length):
-        return []
+        return self.q.pop(0)[:length] if self.q else []
 
     def read(self, n, timeout_ms=0):
         return self.q.pop(0)[:n] if self.q else []

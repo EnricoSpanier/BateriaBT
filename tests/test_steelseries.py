@@ -74,3 +74,27 @@ def test_rival(monkeypatch):
 
 def test_sem_resposta_da_none():
     assert ss.read_nova7(FakeDev(), m(0x2258)) is None
+
+
+def test_nova7p_discreto_e_direto():
+    assert ss.read_nova7(answer([0, 0, 2, 0x03]), m(0x220A)) == (50, False)
+    assert ss.read_nova7(answer([0, 0, 64, 0x01]), m(0x22A7)) == (64, True)
+
+
+def test_arctis9():
+    assert ss.read_arctis9(answer([0, 0, 0, 0x7F, 0x01] + [0] * 7), m(0x12C2)) == (50, True)
+    assert ss.read_arctis9(answer([0, 0, 0, 0x7F, 0xFF] + [0] * 7), m(0x12C2)) is None
+
+
+def test_pro_wireless():
+    def on(d):
+        return [[0x04, 0x00]] if d[0] == 0x41 else [[3]]
+    h = FakeDev(on_write=on)
+    assert ss.read_pro_wireless(h, m(0x1290)) == (75, False) and len(h.writes[0]) == 31
+    assert ss.read_pro_wireless(FakeDev(on_write=lambda d: [[0x02, 0x00]]), m(0x1290)) is None
+
+
+def test_gamebuds():
+    assert ss.read_gamebuds(answer([0, 0, 0, 0x03, 0x03, 80, 60]), m(0x230A)) == (60, False)
+    assert ss.read_gamebuds(answer([0, 0, 0, 0x02, 0x03, 10, 60]), m(0x230A)) == (60, False)
+    assert ss.read_gamebuds(answer([0, 0, 0, 0x02, 0x02, 80, 60]), m(0x230A)) is None

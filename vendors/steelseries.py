@@ -1,4 +1,4 @@
-"""SteelSeries: headsets Arctis/Nova (HeadsetControl) e mouses Aerox/Rival sem fio (rivalcfg)."""
+"""SteelSeries: headsets Arctis/Nova e GameBuds (HeadsetControl) e mouses Aerox/Rival sem fio (rivalcfg)."""
 from . import Model, pad, xfer
 
 VID = 0x1038
@@ -15,7 +15,7 @@ def _nova(h, n):
     return xfer(h, bytes([0x00, 0xB0]), 128, lambda r: len(r) >= n)
 
 
-NOVA7_DISCRETE = {0x2202, 0x2206, 0x223A, 0x227A, 0x22A4}
+NOVA7_DISCRETE = {0x2202, 0x2206, 0x220A, 0x223A, 0x227A, 0x22A4}
 
 
 def read_nova7(h, m):
@@ -78,6 +78,29 @@ def read_rival(h, m):
     return (r[0], bool(r[2])) if r and r[0] <= 100 else None
 
 
+def read_arctis9(h, m):
+    r = xfer(h, bytes([0x00, 0x20]), 12, lambda r: len(r) >= 5)
+    if not r or r[4] == 0xFF:  # fone desligado
+        return None
+    return _map(r[3], 0x64, 0x9A), r[4] == 0x01
+
+
+def read_pro_wireless(h, m):
+    st = xfer(h, pad([0x41, 0xAA], 31), 2, lambda r: len(r) >= 1)
+    if not st or st[0] != 0x04:  # 0x02 = fone desligado
+        return None
+    r = xfer(h, pad([0x40, 0xAA], 31), 1, lambda r: len(r) >= 1 and r[0] <= 4)
+    return (_map(r[0], 0, 4), False) if r else None
+
+
+def read_gamebuds(h, m):
+    r = _nova(h, 7)
+    if not r:
+        return None
+    on = [r[5 + i] for i in (0, 1) if r[3 + i] == 0x03]  # 0x03 = fone fora do estojo
+    return (min(100, min(on)), False) if on else None
+
+
 def _h(pids, name, read, coll):
     return [Model(VID, p, name, "HEADSET", read, **coll) for p in pids]
 
@@ -91,6 +114,10 @@ MODELS = [
     *_h([0x2206, 0x22AD, 0x22A4, 0x22A5], "SteelSeries Arctis Nova 7X", read_nova7, NOVA),
     *_h([0x22A9], "SteelSeries Arctis Nova 7 Diablo IV", read_nova7, NOVA),
     *_h([0x227A], "SteelSeries Arctis Nova 7 WoW", read_nova7, NOVA),
+    *_h([0x220A, 0x22A7, 0x2298], "SteelSeries Arctis Nova 7P", read_nova7, NOVA),
+    *_h([0x12C2, 0x12C4], "SteelSeries Arctis 9", read_arctis9, dict(interface=0)),
+    *_h([0x1290], "SteelSeries Arctis Pro Wireless", read_pro_wireless, dict(interface=0)),
+    *_h([0x230A], "SteelSeries Arctis GameBuds", read_gamebuds, NOVA),
     *_h([0x220E, 0x2212, 0x2216, 0x2236], "SteelSeries Arctis 7+", read_7plus, NOVA),
     *_h([0x2269, 0x226D], "SteelSeries Arctis Nova 3 Wireless", read_nova35, NOVA),
     *_h([0x2232, 0x2253], "SteelSeries Arctis Nova 5", read_nova35, NOVA),
