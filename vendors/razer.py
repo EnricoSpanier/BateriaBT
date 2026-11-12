@@ -1,7 +1,9 @@
-"""Mouses Razer sem fio: feature report de 90 bytes (protocolo documentado pelo OpenRazer)."""
+"""Razer sem fio: mouses e teclados (feature report de 90 bytes, protocolo documentado pelo OpenRazer) e o
+controle Wolverine V2 Pro (só lê o report que ele já envia, como os controles PlayStation)."""
 import time
 
 from . import Model
+from .playstation import _scan
 
 VID = 0x1532
 
@@ -62,9 +64,12 @@ def request(tid, cls, cmd, size=0x02):
 
 def _query(h, tid, cls, cmd, wait):
     for _ in range(3):
-        h.send_feature_report(b"\0" + bytes(request(tid, cls, cmd)))
-        time.sleep(wait)
-        r = bytes(h.get_feature_report(0, 91))[1:]  # o hidapi devolve o report ID na frente
+        try:
+            h.send_feature_report(b"\0" + bytes(request(tid, cls, cmd)))
+            time.sleep(wait)
+            r = bytes(h.get_feature_report(0, 91))[1:]  # o hidapi devolve o report ID na frente
+        except OSError:  # coleção sem esse feature report (teclados têm várias na mesma interface)
+            return None
         if len(r) < 90 or r[6] != cls or r[7] != cmd:
             return None
         if r[0] == 0x02:
@@ -75,7 +80,7 @@ def _query(h, tid, cls, cmd, wait):
 
 
 def read(h, m):
-    tid, wait = DEVICES[m.pid][1], (0.4 if m.pid in SLOW else 0.06)
+    tid, wait = {**DEVICES, **KEYBOARDS}[m.pid][1], (0.4 if m.pid in SLOW else 0.06)
     r = _query(h, tid, 0x07, 0x80, wait)
     if not r:
         return None
@@ -88,3 +93,35 @@ def read(h, m):
 
 MODELS = [Model(VID, pid, name, "MOUSE", read, usage_page=0x01, usage=0x02, interface=0)
           for pid, (name, _) in DEVICES.items()]
+
+# teclados: pid: (nome, transaction_id, interface). Fonte: OpenRazer razerkbd_driver.c/.h.
+KEYBOARDS = {
+    0x0258: ("Razer BlackWidow V3 Mini HyperSpeed", 0x1F, 3), 0x0271: ("Razer BlackWidow V3 Mini HyperSpeed", 0x9F, 3),
+    0x02B9: ("Razer BlackWidow V4 Mini HyperSpeed", 0x1F, 3), 0x02BA: ("Razer BlackWidow V4 Mini HyperSpeed", 0x9F, 3),
+    0x02D7: ("Razer BlackWidow V4 TKL HyperSpeed", 0x1F, 3), 0x02D5: ("Razer BlackWidow V4 TKL HyperSpeed", 0x9F, 2),
+    0x0292: ("Razer DeathStalker V2 Pro", 0x1F, 3), 0x0290: ("Razer DeathStalker V2 Pro", 0x9F, 2),
+    0x0298: ("Razer DeathStalker V2 Pro TKL", 0x1F, 3), 0x0296: ("Razer DeathStalker V2 Pro TKL", 0x9F, 2),
+    0x025A: ("Razer BlackWidow V3 Pro", 0x3F, 2), 0x025C: ("Razer BlackWidow V3 Pro", 0x9F, 2),
+}
+
+
+def read_wolverine(h, m):
+    """Report 0x01 no layout "alternate" do SDL: status em [30], nibble baixo = nível 0-10 (0x0C = não
+    informa), nibble alto 1 = carregando, 2 = cheio."""
+    got = _scan(h, {0x01: 30})
+    if got is None or len(got[0]) == 78:  # 78 = report simples, sem bateria nesse lugar
+        return None
+    s = got[0][30]
+    level, state = s & 0x0F, s >> 4
+    if level > 10:
+        return None
+    return (100, False) if state == 2 else (min(level * 10 + 5, 100), state == 1)
+
+
+MODELS += [
+    # a coleção não está documentada: como nos mouses, só a Generic Desktop da interface do OpenRazer
+    *[Model(VID, pid, name, "KEYBOARD", read, usage_page=0x01, interface=iface)
+      for pid, (name, _, iface) in KEYBOARDS.items()],
+    *[Model(VID, pid, "Razer Wolverine V2 Pro", "GAMEPAD", read_wolverine, usage_page=0x01, usage=0x05, writes=False)
+      for pid in (0x100B, 0x100C)],
+]
