@@ -98,3 +98,11 @@ def test_gamebuds():
     assert ss.read_gamebuds(answer([0, 0, 0, 0x03, 0x03, 80, 60]), m(0x230A)) == (60, False)
     assert ss.read_gamebuds(answer([0, 0, 0, 0x02, 0x03, 10, 60]), m(0x230A)) == (60, False)
     assert ss.read_gamebuds(answer([0, 0, 0, 0x02, 0x02, 80, 60]), m(0x230A)) is None
+
+
+def test_prime_cabo_e_receptor(monkeypatch):
+    monkeypatch.setattr("vendors.time.sleep", lambda s: None)
+    h = answer([0x00, 0x80 | 11])
+    assert ss.read_aerox(h, m(0x1842)) == (50, True) and h.writes == [b"\x00\x92"]
+    h = answer([0x00, 21])
+    assert ss.read_aerox(h, m(0x1848)) == (100, False) and h.writes == [b"\x00\xd2"]

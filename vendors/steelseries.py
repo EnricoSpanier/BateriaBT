@@ -61,7 +61,7 @@ def read_arctis7(h, m):
     return (r[2], False) if r else None
 
 
-AEROX_WIRED = {0x183A, 0x187A, 0x1854, 0x185E, 0x1862, 0x185A, 0x1876}
+AEROX_WIRED = {0x183A, 0x187A, 0x1854, 0x185E, 0x1862, 0x185A, 0x1876, 0x1842, 0x184A}  # + Prime no cabo
 
 
 def read_aerox(h, m):
@@ -130,6 +130,8 @@ MODELS = [
     *_mouse([0x1838, 0x1878, 0x183A, 0x187A], "SteelSeries Aerox 3 Wireless", read_aerox, 3),
     *_mouse([0x1852, 0x185C, 0x1860, 0x1854, 0x185E, 0x1862], "SteelSeries Aerox 5 Wireless", read_aerox, 3),
     *_mouse([0x1858, 0x1874, 0x185A, 0x1876], "SteelSeries Aerox 9 Wireless", read_aerox, 3),
+    *_mouse([0x1840, 0x1842], "SteelSeries Prime Wireless", read_aerox, 3),
+    *_mouse([0x1848, 0x184A], "SteelSeries Prime Mini Wireless", read_aerox, 3),
     *_mouse([0x1830], "SteelSeries Rival 3 Wireless", read_rival, 3),
     *_mouse([0x1872], "SteelSeries Rival 3 Wireless Gen 2", read_rival, 3),
     *_mouse([0x1726, 0x172B], "SteelSeries Rival 650 Wireless", read_rival, 0),
