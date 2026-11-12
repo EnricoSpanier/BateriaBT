@@ -92,3 +92,23 @@ MODELS = [
     Model(HP, 0x08BE, "HyperX Cloud Alpha 2 Wireless", "HEADSET", read_alpha2,
           usage_page=0xFF13, usage=0xFF00, interface=2),
 ]
+
+
+# --- mouses ---
+def read_dart(h, m):
+    """Pulsefire Dart e Haste Wireless (1ª geração): heartbeat 0x51 pelo receptor (protocolo documentado
+    em hyperx_pulsefire_dart_reverse_engineering e open-pulsefire-haste). [4] = %, [5] = 1 carregando."""
+    r = xfer(h, pad([0x00, 0x51], 65), 64, lambda r: len(r) > 5 and r[0] == 0x51 and r[4] <= 100 and r[5] <= 2)
+    return (r[4], r[5] == 1) if r else None
+
+
+MOUSE = dict(usage_page=0xFF00, interface=2)
+MODELS += [
+    Model(KINGSTON, 0x16E1, "HyperX Pulsefire Dart", "MOUSE", read_dart, **MOUSE),
+    Model(HP, 0x068E, "HyperX Pulsefire Dart", "MOUSE", read_dart, **MOUSE),
+    Model(HP, 0x028E, "HyperX Pulsefire Haste Wireless", "MOUSE", read_dart, **MOUSE),
+    # mesmo protocolo do Cloud Alpha 2 (52 01 = conectado, 50 02 = bateria), pelo receptor
+    *[Model(HP, pid, name, "MOUSE", read_alpha2, usage_page=0xFF00, usage=0x0001, interface=2)
+      for pid, name in ((0x0F98, "HyperX Pulsefire Haste 2 Wireless"), (0x0CBD, "HyperX Pulsefire Haste 2 Pro 4K"),
+                        (0x06BF, "HyperX Pulsefire Saga Pro"))],
+]

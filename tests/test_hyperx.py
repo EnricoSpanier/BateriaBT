@@ -72,3 +72,19 @@ def test_sem_resposta_da_none(monkeypatch):
 def test_alpha2_desligado():
     h = FakeDev(on_write=lambda d: [[0x53, 0x01, 0x00]])
     assert hx.read_alpha2(h, m(0x08BE)) is None
+
+
+def test_dart():
+    h = FakeDev(on_write=lambda d: [[0x51, 0, 0, 0x03, 57, 1, 0x0F] + [0] * 57])
+    assert hx.read_dart(h, m(0x16E1)) == (57, True) and h.writes[0][:2] == b"\x00\x51" and len(h.writes[0]) == 65
+    assert hx.read_dart(FakeDev(on_write=lambda d: [[0x52, 0, 0, 3, 57, 1]]), m(0x16E1)) is None
+
+
+def test_haste2_usa_o_protocolo_do_alpha2():
+    def on(d):
+        return [[0xFF, 0x01], [0x53, 0x01, 0x01]] if d[0] == 0x52 else [[0xFB, 0x0A, 1], [0x51, 0x02, 64, 1]]
+    assert m(0x0F98).read(FakeDev(on_write=on), m(0x0F98)) == (64, True)
+
+
+def test_haste2_dormindo():
+    assert m(0x0F98).read(FakeDev(on_write=lambda d: [[0x53, 0x01, 0x00]]), m(0x0F98)) is None
