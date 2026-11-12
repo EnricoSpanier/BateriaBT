@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QButtonGroup, QCol
                                QHBoxLayout, QLabel, QLineEdit, QMenu, QPushButton, QScrollArea, QSlider, QSpinBox,
                                QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget)
 import graphics as G  # desenho vetorial (ícones e pilhas) igual ao original
+from vendors import VendorReader  # outras marcas (Razer, SteelSeries, HyperX, Corsair, PlayStation, Xbox)
 from winrt.windows.devices.enumeration import DeviceInformation, DeviceInformationKind
 from winrt.windows.foundation import IPropertyValue, PropertyType
 
@@ -1713,7 +1714,7 @@ class App:
         self.cfg = load_config()
         self.history = load_history()   # did -> [[timestamp, %], ...]
         self._hist_dirty = False
-        self.sources = {"bt": {}, "hid": {}, "ghub": {}}
+        self.sources = {"bt": {}, "vendor": {}, "hid": {}, "ghub": {}}
         self.alerted, self.full_alerted, self.last_pct = set(), set(), {}
         self.dev_trays = {}
 
@@ -1743,6 +1744,8 @@ class App:
         self.ghub.done.connect(lambda d: self.on_source("ghub", d))
         self.hidpp = HidppReader()
         self.hidpp.done.connect(lambda d: self.on_source("hid", d))
+        self.vendor = VendorReader()
+        self.vendor.done.connect(lambda d: self.on_source("vendor", d))
         self.timer = QTimer(interval=INTERVAL_MS, timeout=self.refresh)
         self.timer.start()
         self.hist_timer = QTimer(interval=300_000, timeout=self.flush_history)  # grava o histórico a cada 5 min
@@ -1759,7 +1762,7 @@ class App:
     @property
     def devices(self):
         s = self.sources
-        out = {**s["bt"], **s["hid"], **s["ghub"]}  # G HUB tem prioridade nos dados
+        out = {**s["bt"], **s["vendor"], **s["hid"], **s["ghub"]}  # G HUB tem prioridade nos dados
         for k in s["hid"].keys() & s["ghub"].keys():  # conectado se qualquer fonte vê o dispositivo
             out[k] = {**out[k], "connected": s["hid"][k]["connected"] or s["ghub"][k]["connected"]}
         return out
@@ -1808,6 +1811,7 @@ class App:
         self.bt.refresh()
         self.ghub.refresh()
         self.hidpp.refresh()
+        self.vendor.refresh()
 
     def migrate(self, aliases):
         """Leva nomes, ocultos, limites e histórico das chaves antigas do G HUB para as novas."""
@@ -1834,7 +1838,7 @@ class App:
         self.sources[src] = devices
         names = {did: d["name"] for did, d in devices.items()}
         # o nome do G HUB é o curto ("G915"); o do receptor só vale para quem ainda não tem nome
-        known = {**names, **self.cfg["known"]} if src == "hid" else {**self.cfg["known"], **names}
+        known = {**names, **self.cfg["known"]} if src in ("hid", "vendor") else {**self.cfg["known"], **names}
         kinds = {**self.cfg["kinds"], **{did: d["kind"] for did, d in devices.items()}}
         if known != self.cfg["known"] or kinds != self.cfg["kinds"]:
             self.cfg["known"], self.cfg["kinds"] = known, kinds
