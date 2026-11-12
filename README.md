@@ -53,7 +53,7 @@ Para levar o app a um PC sem Python, gere uma pasta com o `BateriaBT.exe`:
 
 ```powershell
 python -m pip install pyinstaller
-powershell -ExecutionPolicy Bypass -File .uild.ps1
+powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
 O resultado fica em `dist\BateriaBT\`: copie a pasta inteira e abra o `BateriaBT.exe`. O .exe não é
