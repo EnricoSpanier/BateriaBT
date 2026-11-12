@@ -124,9 +124,13 @@ def set_startup(on):
         return
     from comtypes.client import CreateObject
     lnk = CreateObject("WScript.Shell", dynamic=True).CreateShortcut(str(STARTUP_LNK))
-    lnk.TargetPath = str(Path(sys.executable).with_name("pythonw.exe"))
-    lnk.Arguments = f'"{Path(__file__).resolve()}"'
-    lnk.WorkingDirectory = str(Path(__file__).resolve().parent)
+    if getattr(sys, "frozen", False):  # instalado pelo BateriaBT-Setup.exe (PyInstaller)
+        lnk.TargetPath = sys.executable
+        lnk.WorkingDirectory = str(Path(sys.executable).parent)
+    else:
+        lnk.TargetPath = str(Path(sys.executable).with_name("pythonw.exe"))
+        lnk.Arguments = f'"{Path(__file__).resolve()}"'
+        lnk.WorkingDirectory = str(Path(__file__).resolve().parent)
     lnk.Save()
 
 

@@ -47,6 +47,19 @@ SteelSeries, HyperX, Corsair, ASUS ROG, Sony, PlayStation, Xbox, Pulsar, VGN e o
    pasta Inicializar do seu usuário apontando para a pasta onde o app está; se mover a pasta, desligue e
    ligue a opção de novo.
 
+## Gerar o .exe (opcional)
+
+Para levar o app a um PC sem Python, gere uma pasta com o `BateriaBT.exe`:
+
+```powershell
+python -m pip install pyinstaller
+powershell -ExecutionPolicy Bypass -File .uild.ps1
+```
+
+O resultado fica em `dist\BateriaBT\`: copie a pasta inteira e abra o `BateriaBT.exe`. O .exe não é
+assinado: o Windows pode mostrar o aviso do SmartScreen ("Mais informações → Executar assim mesmo"), e
+com o Controle Inteligente de Aplicativos ligado ele é bloqueado.
+
 ## Atualizar
 
 ```powershell
