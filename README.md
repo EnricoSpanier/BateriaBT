@@ -69,3 +69,9 @@ Depois feche o app (área de notificação → **Sair**) e abra de novo.
 
 1. No painel, desligue **"Iniciar com o Windows"** e feche o app (**Sair**).
 2. Apague a pasta do Bateria BT e, se quiser, `%APPDATA%\BateriaBT`.
+
+## Licença
+
+[Mozilla Public License 2.0](LICENSE). Pode usar, alterar e distribuir, inclusive junto com código
+fechado; quem alterar e distribuir arquivos deste projeto precisa manter esses arquivos abertos sob a
+MPL 2.0 e o aviso de copyright. Copyright (c) 2026 Enrico Spanier.
