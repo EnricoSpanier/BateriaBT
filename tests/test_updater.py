@@ -81,7 +81,10 @@ def test_git_ok_instala_dependencias_e_reinicia(monkeypatch):
     monkeypatch.setattr(up.subprocess, "Popen", lambda args, **k: started.append(args))
     u._git_done.disconnect(u._after_git)
     u._git_done.connect(done.append)
+    texts = []
+    u.changed.connect(lambda: texts.append(u.text))
     u._git_update()
+    assert texts == ["Instalando dependências…"]
     assert done == [""] and calls[1][-3:] == ["install", "-q", "-r", "requirements.txt"][-3:]
     u._after_git("")
     assert started[0][-2:] == [str(up.ROOT / "bateria_bt.py"), "--restart"] and quit_

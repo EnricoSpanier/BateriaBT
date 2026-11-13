@@ -45,6 +45,7 @@ class Updater(QObject):
     botão ativo). O clique chama `click()`, que faz a próxima etapa."""
     changed = Signal()
     _git_done = Signal(str)  # erro ("" = ok), vindo da thread do git pull
+    _git_step = Signal(str)  # texto da etapa, vindo da mesma thread
 
     def __init__(self, quit_app):
         super().__init__()
@@ -53,6 +54,7 @@ class Updater(QObject):
         self.text, self.action = "Busca a versão nova no GitHub.", "Buscar atualização"
         self.release = None
         self._git_done.connect(self._after_git)
+        self._git_step.connect(lambda text: self._set(text, ""))
 
     def _set(self, text, action):
         self.text, self.action = text, action
@@ -113,6 +115,7 @@ class Updater(QObject):
         python = Path(sys.executable).with_name("python.exe")
         try:
             self._run_cmd(["git", "pull", "--ff-only"])
+            self._git_step.emit("Instalando dependências…")
             self._run_cmd([str(python), "-m", "pip", "install", "-q", "-r", "requirements.txt"])
             self._git_done.emit("")
         except Exception as e:
