@@ -11,7 +11,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QUrl, Signal
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 API = "https://api.github.com/repos/EnricoSpanier/BateriaBT/releases/latest"
 ASSET = "BateriaBT-Setup.exe"
 ROOT = Path(__file__).resolve().parent
