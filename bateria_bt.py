@@ -50,7 +50,8 @@ DEFAULTS = {
     "widget_style": "standard",  # standard / frameless / capsules / neon
     "icon_style": "outline",   # outline / filled / minimal
     "animation": "blink",      # none / blink / fade / scale / slide / pulse
-    "tray_per_device": False,
+    "tray_per_device": False,  # separar dispositivos na barra: um widget por dispositivo (nome antigo mantido)
+    "offsets": {},             # id -> offset de cada widget separado
     "full_charge_alert": True,
     "display_mode": "auto",    # auto / full / compact / battery / text_only / micro
     "layout_mode": "auto",     # auto / row / grid (duas linhas)
@@ -599,13 +600,20 @@ def icon_kind(kind):
     return k if k in G.DEVICE_KINDS else "generic"
 
 
+def default_offsets(base, widths, gap=4):
+    """Widgets separados sem posição salva: lado a lado, o último (mais à direita) onde fica o widget único.
+    `widths` da esquerda para a direita; devolve a distância de cada um até a borda direita da barra."""
+    return [base + sum(widths[i + 1:]) + gap * (len(widths) - 1 - i) for i in range(len(widths))]
+
+
 class TaskbarWidget(QWidget):
     """Janela sem foco, 'possuída' pela barra de tarefas; cada dispositivo é uma pílula desenhada."""
 
-    def __init__(self, app):
+    def __init__(self, app, did=None):
         super().__init__(None, Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
                          | Qt.WindowDoesNotAcceptFocus)
         self.app = app
+        self.did = did            # None = widget com todos; senão, o widget separado deste dispositivo
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.setMouseTracking(True)
@@ -759,6 +767,11 @@ class TaskbarWidget(QWidget):
         self._now = time.monotonic()
         for r, row in zip(self.pills, self.rows):
             self._paint_pill(p, r, row, cp, pal, st, op)
+        if self.app.blink % 2:  # ao separar/juntar: borda piscando em cada item
+            p.setPen(QPen(acc, 2))
+            p.setBrush(Qt.NoBrush)
+            for r in self.pills:
+                p.drawRoundedRect(r.adjusted(1, 1, -1, -1), m["radius"], m["radius"])
         p.end()
 
     def _separators(self, p, pal):
@@ -893,6 +906,8 @@ class TaskbarWidget(QWidget):
         offset = self.app.cfg["offset"]
         if offset is None:  # padrão: à esquerda da área de notificação e do widget do clima
             offset = (bar.right - notify.left) / dpr + 168
+        if self.did is not None:
+            offset = self.app.split_offset(self, offset)
         x = right - offset - self.width()
         wb = widgets_button(tb)  # não cobre o clima, que cresce/encolhe com o texto e a bandeja
         if wb and x < wb[1] / dpr and x + self.width() > wb[0] / dpr:
@@ -935,7 +950,7 @@ class TaskbarWidget(QWidget):
         rects = taskbar_rects()
         if rects:
             right = rects[1].right / self.devicePixelRatioF()
-            self.app.set("offset", round(right - self.x() - self.width()))
+            self.app.save_offset(self.did, round(right - self.x() - self.width()))
 
     def leaveEvent(self, _):
         self.popup.hide()
@@ -1490,8 +1505,8 @@ class Panel(QWidget):
         v.addWidget(self._group(
             self._toggle("Mostrar desconectados na barra", "Exibe o último nível conhecido, esmaecido.",
                          cfg["show_disconnected"], lambda on: app.set("show_disconnected", on)),
-            self._toggle("Um ícone por dispositivo na bandeja",
-                         "Cada um com seu nível. O Windows pode colocá-los nos ícones ocultos até você fixá-los.",
+            self._toggle("Separar dispositivos na barra",
+                         "Cada dispositivo vira um widget próprio, que você arrasta para onde quiser.",
                          cfg["tray_per_device"], lambda on: app.set("tray_per_device", on))))
 
         v.addWidget(self._label("Alertas", "section"))
@@ -1743,7 +1758,9 @@ class App:
         self._hist_dirty = False
         self.sources = {"bt": {}, "vendor": {}, "hid": {}, "ghub": {}}
         self.alerted, self.full_alerted, self.last_pct = set(), set(), {}
-        self.dev_trays = {}
+        self.split = {}  # did -> TaskbarWidget separado
+        self.blink = 0  # ao separar/juntar, as bordas piscam para você ver a mudança
+        self.blink_timer = QTimer(interval=400, timeout=self._blink_step)
 
         self.updater = Updater(qapp.quit)  # antes do painel, que mostra o estado dele
         self.widget = TaskbarWidget(self)
@@ -1798,12 +1815,18 @@ class App:
     # --- config ---
     def set(self, key, value):
         self.cfg[key] = value
+        if key == "offset" and value is None:  # "Restaurar posição" vale também para os separados
+            self.cfg["offsets"] = {}
         save_config(self.cfg)
         if key == "widget_visible" and self.toggle_act.isChecked() != value:
             self.toggle_act.setChecked(value)
         self.redraw()
         if key == "animation":
-            self.widget.replay()  # mostra a animação escolhida
+            for w in self.widgets():
+                w.replay()  # mostra a animação escolhida
+        if key == "tray_per_device":
+            self.blink = 10
+            self.blink_timer.start()
         self.panel.on_config(key)
 
     def toggle_hidden(self, did):
@@ -1946,37 +1969,56 @@ class App:
     # --- saída ---
     def redraw(self):
         rows = self.visible_rows()
-        self.widget.set_rows(rows)
+        self.sync_split(rows)
         connected = [r for r in rows if r["connected"]]
         low = min(connected, key=lambda r: r["pct"]) if connected else None
         self.tray.setIcon(self.make_icon(low))
         self.tray.setToolTip(APP_TITLE + "\n" + ("\n".join(f"{r['name']}: {r['pct']}%" +
                                                            ("" if r["connected"] else " (desconectado)")
                                                            for r in rows) or "Sem dispositivos"))
-        self.update_trays(connected)
 
-    def update_trays(self, rows):
-        want = {r["did"]: r for r in rows} if self.cfg["tray_per_device"] else {}
-        for did in list(self.dev_trays):
+    def widgets(self):
+        return [self.widget, *self.split.values()]
+
+    def sync_split(self, rows):
+        """Opção ligada: um widget por dispositivo (o único fica vazio e some); desligada, o contrário."""
+        on = self.cfg["tray_per_device"]
+        want = {r["did"]: r for r in rows} if on else {}
+        for did in list(self.split):
             if did not in want:
-                t = self.dev_trays.pop(did)
-                t.hide()
-                t.deleteLater()
+                w = self.split.pop(did)
+                w.popup.hide()
+                w.hide()
+                w.deleteLater()
         for did, r in want.items():
-            t = self.dev_trays.get(did)
-            if t is None:
-                t = self.dev_trays[did] = QSystemTrayIcon()
-                t.setContextMenu(self.menu)
-                t.activated.connect(self._tray_click)
-            t.setIcon(self.make_icon(r, number=True))
-            t.setToolTip(f"{r['name']}: {r['pct']}%")
-            t.show()
-        self.tray.setVisible(not want)
+            if did not in self.split:
+                self.split[did] = TaskbarWidget(self, did)
+            self.split[did].set_rows([r])
+        self.split = {did: self.split[did] for did in want}  # ordem da barra, da esquerda para a direita
+        self.widget.set_rows([] if on else rows)
+
+    def split_offset(self, w, base):
+        saved = self.cfg["offsets"].get(w.did)
+        if saved is not None:
+            return saved
+        order = list(self.split.values())
+        return default_offsets(base, [x.width() for x in order])[order.index(w)] if w in order else base
+
+    def save_offset(self, did, value):
+        if did is None:
+            self.set("offset", value)
+        else:
+            self.set("offsets", {**self.cfg["offsets"], did: value})
+
+    def _blink_step(self):
+        self.blink -= 1
+        if self.blink <= 0:
+            self.blink_timer.stop()
+        for w in self.widgets():
+            w.update()
 
     def notify(self, title, msg, icon=QSystemTrayIcon.Information):
-        """Notificação por um ícone visível (o geral fica oculto no modo de um ícone por dispositivo)."""
-        tray = self.tray if self.tray.isVisible() else next(iter(self.dev_trays.values()), self.tray)
-        tray.showMessage(title, msg, icon, 10_000)
+        self.tray.showMessage(title, msg, icon, 10_000)
 
     def check_alerts(self):
         for did, d in self.devices.items():
@@ -1997,23 +2039,15 @@ class App:
                 self.full_alerted.add(did)
                 self.notify("Carga completa", f"{name} chegou a 100 %. Já pode tirar do carregador.")
 
-    def make_icon(self, row, number=False):
-        """Ícone da bandeja: pilha do menor nível, ou (por dispositivo) o número sobre a cor do nível."""
+    def make_icon(self, row):
+        """Ícone da bandeja: pilha do menor nível."""
         pm = QPixmap(64, 64)
         pm.fill(Qt.transparent)
         p = QPainter(pm)
         p.setRenderHint(QPainter.Antialiasing)
         fill = self.level_color(row["did"], row["pct"]) if row else QColor("#808080")
-        if number:
-            p.setPen(Qt.NoPen)
-            p.setBrush(fill)
-            p.drawRoundedRect(2, 6, 60, 52, 12, 12)
-            p.setPen(QColor("#FFFFFF"))
-            p.setFont(QFont("Segoe UI", 26, QFont.Bold))
-            p.drawText(pm.rect(), Qt.AlignCenter, str(min(row["pct"], 99)))
-        else:
-            fg = QColor("#FFFFFF" if bar_is_dark(self.cfg["theme"]) else "#1B1B1F")
-            G.draw_battery(p, QRectF(2, 14, 60, 36), row["pct"] if row else None, fill, fg)
+        fg = QColor("#FFFFFF" if bar_is_dark(self.cfg["theme"]) else "#1B1B1F")
+        G.draw_battery(p, QRectF(2, 14, 60, 36), row["pct"] if row else None, fill, fg)
         p.end()
         return QIcon(pm)
 
